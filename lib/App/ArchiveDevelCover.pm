@@ -5,6 +5,7 @@ use MooseX::Types::Path::Class;
 use DateTime;
 use File::Copy;
 use HTML::TableExtract;
+use Data::Dumper;$Data::Dumper::Indent=1;
 
 # ABSTRACT: Archive Devel::Cover reports
 our $VERSION = '1.002';
@@ -18,6 +19,13 @@ sub _build_project {
     my @list = $self->from->parent->dir_list;
     return $list[-1] || 'unknown project';
 }
+
+has 'coverage' => (
+    is          => 'ro',
+    isa         => 'ArrayRef',
+    default     => sub { [qw(stm sub total)] },
+);
+
 has 'coverage_html' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
 sub _build_coverage_html {
     my $self = shift;
@@ -101,7 +109,7 @@ sub archive {
 sub update_index {
     my $self = shift;
 
-    my $te = HTML::TableExtract->new( headers => [qw(stm sub total)] );
+    my $te = HTML::TableExtract->new( headers => $self->coverage );
     $te->parse(scalar $self->coverage_html->slurp);
     my $rows =$te->rows;
     my $last_row = $rows->[-1];
@@ -162,10 +170,14 @@ sub generate_diff {
     my $prev = $self->previous_stats;
     return unless $prev->[0];
 
-    my $te_new = HTML::TableExtract->new( headers => [qw(file stm sub total)] );
+    my $te_new = HTML::TableExtract->new( headers =>
+        [ 'file', @{$self->coverage} ]
+    );
     $te_new->parse(scalar $self->coverage_html->slurp);
     my $new_rows =$te_new->rows;
-    my $te_old = HTML::TableExtract->new( headers => [qw(file stm sub total)] );
+    my $te_old = HTML::TableExtract->new( headers =>
+        [ 'file', @{$self->coverage} ]
+    );
     $te_old->parse(scalar $self->to->subdir($prev->[0])->file('coverage.html')->slurp);
     my $old_rows =$te_old->rows;
 
