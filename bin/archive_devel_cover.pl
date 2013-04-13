@@ -13,8 +13,19 @@ __END__
 
 =head1 SYNOPSIS
 
+Default reports: statement, subroutine, total
+
   ~/perl/Some-Project$ archive_devel_cover.pl --project Some-Project --from cover_db/ --to /var/www/coverage_reports/some_project/
 
+User-selected reports:
+
+  ~/perl/Some-Project$ archive_devel_cover.pl \
+    --project Some-Project \
+    --from cover_db/ \
+    --to /var/www/coverage_reports/some_project/ \
+    --coverage stmt \
+    --coverage branch \
+    --coverage condition
 
 =head1 DESCRIPTION
 
