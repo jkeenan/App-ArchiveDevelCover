@@ -23,7 +23,7 @@ User-selected reports:
     --project Some-Project \
     --from cover_db/ \
     --to /var/www/coverage_reports/some_project/ \
-    --coverage stmt \
+    --coverage statement \
     --coverage branch \
     --coverage condition
 
