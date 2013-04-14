@@ -6,6 +6,8 @@ use DateTime;
 use File::Copy;
 use HTML::TableExtract;
 use Data::Dumper;$Data::Dumper::Indent=1;
+use Devel::Cover::DB;
+use Cwd;
 
 # ABSTRACT: Archive Devel::Cover reports
 our $VERSION = '1.002';
@@ -59,7 +61,7 @@ has [qw(from to)] => (is=>'ro',isa=>'Path::Class::Dir',coerce=>1,required=>1,);
 has 'project' => (is => 'ro', isa=>'Str', lazy_build=>1);
 sub _build_project {
     my $self = shift;
-    my @list = $self->from->parent->dir_list;
+    my @list = $self->from->dir_list;
     return $list[-1] || 'unknown project';
 }
 
@@ -71,70 +73,94 @@ has 'coverage' => (
     default     => sub { [qw(statement subroutine total)] },
 );
 
-# 'coverage_html': Path::Class::File object for coverage.html
-has 'coverage_html' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
-sub _build_coverage_html {
+has 'devel_cover_db' => (
+    is  => 'ro',
+    isa => 'Devel::Cover::DB',
+    lazy_build  => 1,
+    traits  => ['NoGetopt'],
+);
+sub _build_devel_cover_db {
     my $self = shift;
-    if (-e $self->from->file('coverage.html')) {
-        return $self->from->file('coverage.html');
-    }
-    else {
-        say "Cannot find 'coverage.html' in ".$self->from.'. Aborting';
-        exit;
-    }
+    my $cover_db_dir = Path::Class::Dir->new($self->from(), 'cover_db');
+    my $cwd = cwd();
+    my $db = Devel::Cover::DB->new( db => $cover_db_dir );
+    chdir $self->from();
+    $db->cover();
+    chdir $cwd;
+    return $db;
 }
 
-# runtime: DateTime object; needs to be obtained from database rather than
-# from coverage.html
-has 'runtime' => (is=>'ro',isa=>'DateTime',lazy_build=>1,traits=> ['NoGetopt'],);
+# runtime: DateTime object; needs to be obtained from database rather than from coverage.html
+has 'runtime' => (
+    is          => 'ro',
+    isa         => 'DateTime',
+    lazy_build  => 1,
+    traits      => ['NoGetopt'],
+);
 sub _build_runtime {
     my $self = shift;
-    return DateTime->from_epoch(epoch=>$self->coverage_html->stat->mtime);
+    my @runs = $self->devel_cover_db->runs;
+    my $t = int($runs[0]->{start});
+    return DateTime->from_epoch(epoch=>$t);
 }
+
+# 'coverage_html': Path::Class::File object for coverage.html
+#has 'coverage_html' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
+#sub _build_coverage_html {
+#    my $self = shift;
+#    if (-e $self->from->file('coverage.html')) {
+#        return $self->from->file('coverage.html');
+#    }
+#    else {
+#        say "Cannot find 'coverage.html' in ".$self->from.'. Aborting';
+#        exit;
+#    }
+#}
+
 
 # 'archive_html': Path::Class::File object; creates the archive/index.html
 # file if it does not already exist
-has 'archive_html' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
-sub _build_archive_html {
-    my $self = shift;
-    unless (-e $self->to->file('index.html')) {
-        my $tpl = $self->_archive_template;
-        my $fh = $self->to->file('index.html')->openw;
-        print $fh $tpl;
-        close $fh;
-    }
-    return $self->to->file('index.html');
-}
-
-# 'archive_db': Path::Class::File object; returns path to archive_db (but file
-# does not necessarily exist)
-has 'archive_db' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
-sub _build_archive_db {
-    my $self = shift;
-    return $self->to->file('archive_db');
-}
-
-# 'previous_stats': reference to 4-element array
-has 'previous_stats' => (is=>'ro',isa=>'ArrayRef',lazy_build=>1,traits=>['NoGetopt']);
-sub _build_previous_stats {
-    my $self = shift;
-    if (-e $self->archive_db) {
-        my $dbr = $self->archive_db->openr;
-        my @data = <$dbr>; # probably better to just get last line...
-        my @prev = split(/;/,$data[-1]);
-        return \@prev;
-    }
-    else {
-        return [undef,0,0,0];
-    }
-}
-
-# 'diff_html': Path::Class::File object returning path to diff.html
-has 'diff_html' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
-sub _build_diff_html {
-    my $self = shift;
-    return $self->to->subdir($self->runtime->iso8601)->file('diff.html');
-}
+#has 'archive_html' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
+#sub _build_archive_html {
+#    my $self = shift;
+#    unless (-e $self->to->file('index.html')) {
+#        my $tpl = $self->_archive_template;
+#        my $fh = $self->to->file('index.html')->openw;
+#        print $fh $tpl;
+#        close $fh;
+#    }
+#    return $self->to->file('index.html');
+#}
+#
+## 'archive_db': Path::Class::File object; returns path to archive_db (but file
+## does not necessarily exist)
+#has 'archive_db' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
+#sub _build_archive_db {
+#    my $self = shift;
+#    return $self->to->file('archive_db');
+#}
+#
+## 'previous_stats': reference to 4-element array
+#has 'previous_stats' => (is=>'ro',isa=>'ArrayRef',lazy_build=>1,traits=>['NoGetopt']);
+#sub _build_previous_stats {
+#    my $self = shift;
+#    if (-e $self->archive_db) {
+#        my $dbr = $self->archive_db->openr;
+#        my @data = <$dbr>; # probably better to just get last line...
+#        my @prev = split(/;/,$data[-1]);
+#        return \@prev;
+#    }
+#    else {
+#        return [undef,0,0,0];
+#    }
+#}
+#
+## 'diff_html': Path::Class::File object returning path to diff.html
+#has 'diff_html' => (is=>'ro',isa=>'Path::Class::File',lazy_build=>1,traits=> ['NoGetopt']);
+#sub _build_diff_html {
+#    my $self = shift;
+#    return $self->to->subdir($self->runtime->iso8601)->file('diff.html');
+#}
 
 ########## PUBLIC METHODS ##########
 
@@ -153,19 +179,13 @@ sub archive {
     my $target = $self->to->subdir($self->runtime->iso8601);
 
     if (-e $target) {
-        say "This coverage report has already been archived.";
+        say STDERR "This coverage report has already been archived.";
         return;
     }
 
     $target->mkpath;
     my $target_string = $target->stringify;
 
-    while (my $f = $from->next) {
-        next unless $f=~/\.(html|css)$/;
-        copy($f->stringify,$target_string) || die "Cannot copy $from to $target_string: $!";
-    }
-
-    say "archived coverage reports at $target_string";
     return $target_string;
 }
 
@@ -240,7 +260,21 @@ sub update_index {
     # We need $last_row to be an array ref with the NNN.n% for statement,
     # branch, condition, subroutine, pod, time, total (or whatever the order
     # is)
-    $self->update_archive_db($last_row);
+#    my $last_row;
+#    $self->update_archive_db($last_row);
+#    $self->devel_cover_db;
+#    say STDERR "XXX: ", ref($self->devel_cover_db);
+#    $self->devel_cover_db->calculate_summary();
+    my $cover = $self->devel_cover_db->cover;
+    for my $file ($cover->items) {
+        my $pct = $self->devel_cover_db->summary($file,'total','percentage');
+#        say STDERR "p: $pct";
+        my $f = $cover->file($file);
+        for my $criterion ($f->items) {
+            # to come
+        }
+    }
+#    $self->update_archive_db( $summary );
 }
 
 ########## INTERNAL METHODS #########
